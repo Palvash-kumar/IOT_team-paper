@@ -1,0 +1,287 @@
+\documentclass[conference]{IEEEtran}
+
+% ── Packages ────────────────────────────────────────────────────────────────
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{float}
+\usepackage{algorithm}
+
+% ── Title ───────────────────────────────────────────────────────────────────
+\title{Improving Distance-Extension Methods for Reliable Wireless Communication in IoT Networks with UAV}
+
+\author{
+\IEEEauthorblockN{AVASU PALVASH KUMAR, MOOD NARENDAR}
+\IEEEauthorblockA{
+Department of Computer Science and Engineering\\
+Indian Institute of Information Technology, Sri City, Chittoor\\
+Andhra Pradesh, India\\
+palvashkumar.a23@iiits.in, mood.n23@iiits.in}
+}
+
+\begin{document}
+
+\maketitle
+
+% ════════════════════════════════════════════════════════════════════════════
+% ABSTRACT
+% ════════════════════════════════════════════════════════════════════════════
+\begin{abstract}
+Unmanned Aerial Vehicles (UAVs) are increasingly used as aerial base stations in Internet of Things (IoT) networks, yet their communication range is limited by path loss and fading. This paper evaluates multiple distance-extension techniques---adaptive power control, directional antenna gain, three-tier adaptive modulation (QPSK/8-PSK/16-QAM), and forward error correction (FEC)---for UAV-IoT links. We propose a novel Genetic Algorithm (GA)-based adaptive power control with a normalised fitness function that explicitly balances coverage and energy efficiency. Simulations show that the combined technique extends the baseline reliable range (BER~$\leq 10^{-3}$) from 4,573\,m to 8,000\,m (+74.9\%). The GA achieves a competitive 7,952\,m (+73.9\%) while consuming 55.7\% less power than threshold-based control (248.1\,mW vs.\ 560.7\,mW). Multi-altitude analysis with altitude-dependent path-loss exponents and Rayleigh fading channel modeling further validate the framework for realistic UAV-IoT deployments.
+\end{abstract}
+
+\begin{IEEEkeywords}
+UAV, IoT, distance extension, adaptive power control, genetic algorithm, BER, SNR, energy efficiency, Rayleigh fading
+\end{IEEEkeywords}
+
+% ════════════════════════════════════════════════════════════════════════════
+% I. INTRODUCTION
+% ════════════════════════════════════════════════════════════════════════════
+\section{Introduction}
+
+The rapid proliferation of Internet of Things (IoT) devices in applications such as precision agriculture, environmental monitoring, disaster response, and smart infrastructure has created a pressing need for flexible, wide-area wireless connectivity \cite{b1}. Traditional terrestrial base stations often fail to provide adequate coverage in remote or dynamically changing environments. Unmanned Aerial Vehicles (UAVs) have emerged as a compelling solution, serving as mobile aerial base stations that provide high line-of-sight (LoS) probability with ground devices \cite{b2,b3}.
+
+However, the UAV-to-ground channel suffers from considerable free-space path loss at extended distances. As the horizontal distance between a UAV hovering at altitude $h$ and an IoT device increases, the three-dimensional slant distance grows, leading to degraded signal-to-noise ratio (SNR) and elevated bit error rates (BER). This fundamentally limits the operational radius within which reliable communication can be maintained.
+
+Several physical-layer techniques---adaptive power control \cite{b7}, directional antennas \cite{b9}, adaptive modulation \cite{b8}, and forward error correction (FEC) \cite{b10}---can extend communication range. While each offers measurable gains individually, their combined effect and the optimal strategy for adaptively applying them remain open research questions. In particular, threshold-based power control maximizes range but wastes energy---a critical constraint for battery-powered UAV platforms with limited flight time.
+
+\textbf{Contributions.} (i)~We develop a comprehensive simulation framework using the log-distance path loss model with shadow fading and Rayleigh fading. (ii)~We systematically evaluate four distance-extension techniques individually and in combination. (iii)~We propose a \textbf{GA-based adaptive power control} with a normalised fitness function achieving 55.7\% energy savings over threshold-based control. (iv)~We perform a multi-altitude trade-off analysis with altitude-dependent path-loss exponents. (v)~We analyze the impact of Rayleigh fading on link reliability.
+
+% ════════════════════════════════════════════════════════════════════════════
+% II. RELATED WORK
+% ════════════════════════════════════════════════════════════════════════════
+\section{Related Work}
+
+Zeng~\textit{et~al.}~\cite{b2} provided a foundational overview of UAV communications, identifying key challenges including channel modeling and energy-constrained operation. Al-Hourani~\textit{et~al.}~\cite{b3} demonstrated that LoS probability increases with UAV altitude while path loss also grows, creating a fundamental trade-off. The log-distance path loss model with $n=2.5$ and $\sigma=4$\,dB is widely adopted for realistic urban UAV scenarios \cite{b5,b6}. Mozaffari~\textit{et~al.}~\cite{b7} showed that dynamic power allocation improves coverage by 15--25\%. Directional antennas with beamforming provide 6--12\,dBi gain over omnidirectional antennas in UAV platforms \cite{b9}. Genetic algorithms have been applied to UAV trajectory optimization \cite{b11} and resource allocation \cite{b12}, but their application to \textit{energy-aware} adaptive power profile optimization for distance extension remains largely unexplored---motivating our proposed approach.
+
+% ════════════════════════════════════════════════════════════════════════════
+% III. SYSTEM MODEL
+% ════════════════════════════════════════════════════════════════════════════
+\section{System Model}
+
+\subsection{Channel Model}
+A UAV hovers at altitude $h=100$\,m, serving ground IoT devices at horizontal distance $d_h$. The 3-D slant distance is $d_\text{3D} = \sqrt{d_h^2 + h^2}$. The channel follows the log-distance path loss model \cite{b5}:
+\begin{equation}
+PL(d) = PL(d_0) + 10n\log_{10}\!\left(\frac{d}{d_0}\right) + X_\sigma
+\label{eq:pathloss}
+\end{equation}
+where $PL(d_0)$ is the Friis free-space loss at reference distance $d_0=1$\,m, $n=2.5$ is the path-loss exponent, and $X_\sigma\!\sim\!\mathcal{N}(0,\sigma^2)$ with $\sigma=4$\,dB models log-normal shadow fading \cite{b6}. The carrier frequency is $f_c=2.4$\,GHz (ISM band), bandwidth $B=1$\,MHz, and noise figure $NF=6$\,dB, yielding a noise floor of $-107.98$\,dBm. For Rayleigh fading channels \cite{b13}, the faded SNR is $\text{SNR}_\text{faded} = \text{SNR} + 10\log_{10}(|h|^2)$ where $|h|^2\!\sim\!\text{Exp}(1)$.
+
+\subsection{Link Budget and BER}
+The received power is $P_{rx} = P_{tx} + G_{tx} + G_{rx} - PL(d_\text{3D})$\,[dBm], and SNR$\,= P_{rx} - N$. We employ three BER models:
+\begin{equation}
+\text{BER}_\text{QPSK} = \tfrac{1}{2}\,\text{erfc}(\sqrt{\gamma}), \;\;
+\text{BER}_\text{16QAM} = \tfrac{3}{8}\,\text{erfc}\!\left(\sqrt{\gamma/5}\right)
+\end{equation}
+\begin{equation}
+\text{BER}_\text{8PSK} = \tfrac{1}{3}\,\text{erfc}\!\left(\sqrt{\gamma \sin^2(\pi/8)}\right)
+\end{equation}
+where $\gamma$ is the linear SNR. The reliability threshold is BER~$\leq10^{-3}$. Table~\ref{tab:params} summarizes all simulation parameters.
+
+\begin{table}[t]
+\centering
+\caption{Simulation Parameters}
+\label{tab:params}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Symbol} & \textbf{Value} \\
+\midrule
+Carrier frequency & $f_c$ & 2.4\,GHz \\
+Bandwidth / Noise figure & $B$\,/\,$NF$ & 1\,MHz / 6\,dB \\
+UAV altitude (default) & $h$ & 100\,m \\
+Tx power (default / max / min) & $P_{tx}$ & 20 / 30 / 10\,dBm \\
+Antenna gain (omni / dir.) & $G$ & 2 / 10\,dBi \\
+Path-loss exponent / Shadow std & $n$\,/\,$\sigma$ & 2.5 / 4\,dB \\
+FEC coding gain & --- & 5\,dB \\
+BER / SNR threshold & --- & $10^{-3}$ / 10\,dB \\
+Distance range / Points & $d_h$\,/\,$N$ & 10--8,000\,m / 500 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ════════════════════════════════════════════════════════════════════════════
+% IV. DISTANCE-EXTENSION TECHNIQUES
+% ════════════════════════════════════════════════════════════════════════════
+\section{Distance-Extension Techniques}
+
+\textbf{Adaptive Power Control.} A threshold-based mechanism dynamically adjusts the transmission power to maintain a target SNR of 10\,dB:
+\begin{equation}
+P_{tx}(d) = \text{clip}\!\left(P_{tx,0} + \text{SNR}_\text{tgt} - \text{SNR}(d),\; P_\text{min},\; P_\text{max}\right)
+\label{eq:power_ctrl}
+\end{equation}
+where $P_{tx,0} = 20$\,dBm, $P_\text{min} = 10$\,dBm, and $P_\text{max} = 30$\,dBm. This greedy approach maximizes range but consumes significant energy at far distances.
+
+\textbf{Directional Antenna.} Replacing the omnidirectional Tx antenna (2\,dBi) with a directional one (10\,dBi) provides an 8\,dB link budget improvement without increasing power consumption.
+
+\textbf{Three-Tier Adaptive Modulation.} Instead of conventional hard QPSK/16-QAM switching, we implement a smoother three-tier scheme with an intermediate 8-PSK layer:
+\begin{equation}
+\text{Mod.} = \begin{cases}
+\text{16-QAM\;(4\,bps)} & \text{SNR} \geq 20\text{\,dB} \\
+\text{8-PSK\;(3\,bps)}  & 15 \leq \text{SNR} < 20\text{\,dB} \\
+\text{QPSK\;(2\,bps)}   & \text{otherwise}
+\end{cases}
+\end{equation}
+The intermediate tier provides a smoother throughput transition and avoids the abrupt performance cliff of two-tier switching.
+
+\textbf{FEC Coding Gain.} A 5\,dB coding gain (rate-1/2 convolutional code) is added to the effective SNR, shifting the BER curve leftward and enabling reliable communication at lower raw SNR values.
+
+\textbf{Combined Approach.} Power control, directional antenna, and FEC are applied simultaneously to achieve maximum range extension, representing the upper bound of conventional techniques.
+
+% ════════════════════════════════════════════════════════════════════════════
+% V. PROPOSED GA-BASED POWER OPTIMIZATION
+% ════════════════════════════════════════════════════════════════════════════
+\section{Proposed GA-Based Power Optimization}
+
+\subsection{Normalised Fitness Function}
+Threshold-based power control greedily maximizes range but is energy-wasteful---it immediately ramps to $P_\text{max}$ at far distances. We propose a GA that jointly optimizes the per-distance power vector $\mathbf{p}=[p_1,\ldots,p_N]$ using a normalised fitness function:
+\begin{equation}
+f(\mathbf{p}) = \underbrace{\frac{1}{N}\sum_{i=1}^{N}\mathbb{1}[\text{SNR}_i \geq \gamma_\text{tgt}]}_{\text{normalised coverage}\;\in[0,1]} - \;\alpha\cdot\underbrace{\frac{\bar{P}}{P_\text{max}}}_{\text{energy penalty}}
+\label{eq:fitness}
+\end{equation}
+subject to $P_\text{min}\leq p_i\leq P_\text{max}$, $\forall i$. Here $\bar{P}$ is the mean Tx power and $\alpha=0.5$ strongly penalises excessive power usage. This formulation explicitly trades a small coverage reduction for significant energy savings---the key novelty over prior work.
+
+\subsection{GA Design and Operators}
+Each chromosome encodes $N=500$ real-valued power levels (dBm). The GA employs: tournament selection ($k\!=\!3$), BLX-$\alpha$ blend crossover ($\alpha\!=\!0.3$, rate\,$=\!0.8$) for continuous variable optimization, Gaussian mutation ($\sigma\!=\!2$\,dB, rate\,$=\!0.15$) for local search, and elitism to preserve the best solution. Population size is~60 with termination after 100~generations. Algorithm~\ref{alg:ga} summarizes the procedure.
+
+\begin{algorithm}[t]
+\caption{GA-Based Adaptive Power Optimization}
+\label{alg:ga}
+\begin{algorithmic}[1]
+\STATE Initialize population of 60 chromosomes uniformly in $[P_\text{min},P_\text{max}]^N$
+\FOR{generation $g=1$ to 100}
+    \STATE Evaluate fitness $f(\mathbf{p})$ for all chromosomes via (\ref{eq:fitness})
+    \STATE Preserve best individual (elitism)
+    \WHILE{new population not full}
+        \STATE Select parents via tournament ($k\!=\!3$)
+        \STATE Apply BLX-$\alpha$ crossover ($\alpha\!=\!0.3$)
+        \STATE Apply Gaussian mutation ($\sigma\!=\!2.0$\,dB)
+        \STATE Clip offspring to $[P_\text{min},P_\text{max}]$
+    \ENDWHILE
+\ENDFOR
+\RETURN Best chromosome $\mathbf{p}^*$
+\end{algorithmic}
+\end{algorithm}
+
+% ════════════════════════════════════════════════════════════════════════════
+% VI. RESULTS AND ANALYSIS
+% ════════════════════════════════════════════════════════════════════════════
+\section{Results and Analysis}
+
+\subsection{Baseline Performance}
+Fig.~\ref{fig:baseline} shows the baseline link performance using QPSK with omnidirectional antennas and fixed 20\,dBm power. The received power decreases from $-30$\,dBm at 10\,m to below $-130$\,dBm at 8,000\,m. SNR falls below 10\,dB at $\sim$2,000\,m, and the BER exceeds $10^{-3}$ at \textbf{4,573\,m}, establishing the baseline maximum reliable distance.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig1_baseline_analysis.png}
+\caption{Baseline UAV-IoT link: received power, SNR, and BER vs.\ distance. BER curves show both raw (light) and Gaussian-smoothed (bold) data.}
+\label{fig:baseline}
+\end{figure}
+
+\subsection{Technique Comparison}
+Fig.~\ref{fig:comparison} compares BER performance across all techniques with raw and Gaussian-smoothed curves. Table~\ref{tab:results} summarizes the results. Key observations: (i)~The \textbf{directional antenna} achieves +74.9\% range at no extra power cost, making it the most efficient individual technique. (ii)~\textbf{Power control} matches directional antenna in range but at $5.6\times$ higher energy (560.7 vs.\ 100.0\,mW). (iii)~\textbf{FEC} provides +65.1\% improvement as a software-only solution. (iv)~The \textbf{GA} achieves 99.4\% of the combined range with 55.7\% less power.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig3_ber_comparison.png}
+\caption{BER comparison: thin lines show raw BER; bold lines show Gaussian-smoothed values. Vertical markers indicate max reliable distance per technique.}
+\label{fig:comparison}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\caption{Performance and Energy Comparison}
+\label{tab:results}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Technique} & \textbf{Range (m)} & \textbf{Improv.} & \textbf{Avg Power (mW)} \\
+\midrule
+Baseline (QPSK, omni)  & 4,573 & ---      & 100.0 \\
+Adaptive Power Control  & 8,000 & +74.9\%  & 560.7 \\
+Directional Antenna     & 8,000 & +74.9\%  & 100.0 \\
+FEC Coding Gain         & 7,552 & +65.1\%  & 100.0 \\
+Combined (PC+Ant+FEC)   & 8,000 & +74.9\%  & 560.7 \\
+\textbf{GA-Optimised}   & \textbf{7,952} & \textbf{+73.9\%} & \textbf{248.1} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{GA Energy Efficiency}
+Fig.~\ref{fig:ga_energy} presents the GA convergence and optimised power profile. The normalised fitness increases from 0.14 to 0.29 over 100~generations, demonstrating effective convergence. The GA power profile reveals intelligent allocation: low power at short distances where channel conditions are strong, and selectively increased power only at far distances where the link budget is most constrained. Unlike threshold control which blindly ramps to $P_\text{max}$, the GA trades a marginal 0.6\% range reduction for a \textbf{55.7\% energy saving} (248.1\,mW vs.\ 560.7\,mW). Fig.~\ref{fig:energy_bar} confirms via the distance--power scatter that the GA occupies the ideal operating region: high range with low energy.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig5_ga_optimization.png}
+\caption{GA convergence (left) and Tx power profiles (right). The GA allocates power intelligently, using far less energy than threshold control.}
+\label{fig:ga_energy}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig8_energy_analysis.png}
+\caption{Energy analysis: average power per technique (left) and distance--power trade-off scatter (right). The GA achieves best efficiency.}
+\label{fig:energy_bar}
+\end{figure}
+
+\subsection{Altitude Trade-off and Rayleigh Fading}
+We evaluate three altitudes with altitude-dependent path-loss exponents reflecting LoS probability \cite{b3}: 50\,m ($n\!=\!3.0$, urban NLOS), 100\,m ($n\!=\!2.5$, mixed), and 200\,m ($n\!=\!2.2$, LoS-dominant). Fig.~\ref{fig:altitude} shows the results. Higher altitude dramatically improves range---from 1,195\,m at 50\,m to 8,000\,m at 200\,m ($6.7\times$ improvement)---despite longer slant distances, because improved LoS conditions reduce the effective path-loss exponent. This confirms the altitude--LoS trade-off reported in \cite{b3}.
+
+Rayleigh fading introduces substantial SNR fluctuations, reducing the effective reliable range by approximately 10--20\% compared to the AWGN baseline. This underscores the importance of deploying the proposed distance-extension techniques in environments with significant NLoS propagation.
+
+% ════════════════════════════════════════════════════════════════════════════
+% VII. CONCLUSION
+% ════════════════════════════════════════════════════════════════════════════
+\section{Conclusion}
+
+This paper presented a comprehensive evaluation of distance-extension techniques for UAV-assisted IoT communication using a realistic log-distance path loss model with shadow fading and Rayleigh fading at 2.4\,GHz. The combined application of power control, directional antennas, and FEC extends the baseline reliable range from 4,573\,m to 8,000\,m (+74.9\%). Our primary contribution---a GA-based adaptive power control with a normalised fitness function---achieves 7,952\,m (+73.9\%) with \textbf{55.7\% less energy} than threshold-based control (248.1\,mW vs.\ 560.7\,mW), making it well-suited for energy-constrained UAV platforms.
+
+The multi-altitude analysis confirmed that UAV height significantly impacts range through the LoS trade-off: range increased $6.7\times$ from 50\,m to 200\,m altitude. Rayleigh fading analysis showed 10--20\% range reduction under NLoS conditions. Future work includes joint trajectory--power optimization using multi-objective evolutionary algorithms, multi-UAV cooperative communication, and hardware-in-the-loop validation with real UAV platforms.
+
+% ════════════════════════════════════════════════════════════════════════════
+% REFERENCES
+% ════════════════════════════════════════════════════════════════════════════
+\begin{thebibliography}{13}
+
+\bibitem{b1}
+A.~Al-Fuqaha, M.~Guizani, M.~Mohammadi, M.~Aledhari, and M.~Ayyash, ``Internet of things: A survey on enabling technologies, protocols, and applications,'' \textit{IEEE Commun. Surveys Tuts.}, vol.~17, no.~4, pp.~2347--2376, 2015.
+
+\bibitem{b2}
+Y.~Zeng, R.~Zhang, and T.~J.~Lim, ``Wireless communications with unmanned aerial vehicles: Opportunities and challenges,'' \textit{IEEE Commun. Mag.}, vol.~54, no.~5, pp.~36--42, May 2016.
+
+\bibitem{b3}
+A.~Al-Hourani, S.~Kandeepan, and S.~Lardner, ``Optimal LAP altitude for maximum coverage,'' \textit{IEEE Wireless Commun. Lett.}, vol.~3, no.~6, pp.~569--572, Dec. 2014.
+
+\bibitem{b5}
+T.~S.~Rappaport, \textit{Wireless Communications: Principles and Practice}, 2nd~ed. Upper Saddle River, NJ, USA: Prentice Hall, 2002.
+
+\bibitem{b6}
+A.~A.~Khuwaja, Y.~Chen, N.~Zhao, M.-S.~Alouini, and P.~Dobbins, ``A survey of channel modeling for UAV communications,'' \textit{IEEE Commun. Surveys Tuts.}, vol.~20, no.~4, pp.~2804--2830, 2018.
+
+\bibitem{b7}
+M.~Mozaffari, W.~Saad, M.~Bennis, and M.~Debbah, ``Efficient deployment of multiple unmanned aerial vehicles for optimal power coverage,'' \textit{IEEE Commun. Lett.}, vol.~20, no.~8, pp.~1647--1650, Aug. 2016.
+
+\bibitem{b8}
+A.~Goldsmith, \textit{Wireless Communications}. Cambridge, U.K.: Cambridge Univ. Press, 2005.
+
+\bibitem{b9}
+W.~Khawaja, I.~Guvenc, D.~W.~Matolak, U.-C.~Fiebig, and N.~Schneckenburger, ``A survey of air-to-ground propagation channel modeling for unmanned aerial vehicles,'' \textit{IEEE Commun. Surveys Tuts.}, vol.~21, no.~3, pp.~2361--2391, 2019.
+
+\bibitem{b10}
+J.~G.~Proakis and M.~Salehi, \textit{Digital Communications}, 5th~ed. New York, NY, USA: McGraw-Hill, 2008.
+
+\bibitem{b11}
+Q.~Wu, Y.~Zeng, and R.~Zhang, ``Joint trajectory and communication design for multi-UAV enabled wireless networks,'' \textit{IEEE Trans. Wireless Commun.}, vol.~17, no.~3, pp.~2109--2121, Mar. 2018.
+
+\bibitem{b12}
+J.~Lyu, Y.~Zeng, R.~Zhang, and T.~J.~Lim, ``Placement optimization of UAV-mounted mobile base stations,'' \textit{IEEE Commun. Lett.}, vol.~21, no.~3, pp.~604--607, Mar. 2017.
+
+\bibitem{b13}
+G.~L.~Stuber, \textit{Principles of Mobile Communication}, 4th~ed. Cham, Switzerland: Springer, 2017.
+
+\end{thebibliography}
+
+\end{document}
