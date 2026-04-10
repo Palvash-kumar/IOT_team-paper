@@ -19,11 +19,11 @@ The simulation framework also includes multi-altitude analysis and Rayleigh fadi
 ## Repository Contents
 
 - `uav_iot_simulation.py`: Main simulation and visualization script.
-- `term_paper.tex`: IEEE-format paper source.
+- `term_paper.tex`: LaTeX source code for the team paper report.
 - `README.md`: Project documentation.
 - `fig1_baseline_analysis.png` to `fig12_summary_dashboard.png`: Generated publication-quality figures.
 - `Improving_the_Distance-Extension_Methods_for_Reliable_Wireless_Communication_in_IoT_Networks_with_UAV.pdf`: Full paper PDF.
-- `Team_Paper.pdf`: Additional compiled paper artifact.
+- `Team_Paper.pdf`: Team paper report (compiled PDF submission).
 
 ## Key Technical Highlights
 
@@ -86,7 +86,7 @@ Running the simulation produces:
 
 ## Paper Build (LaTeX)
 
-To compile the paper locally, use a LaTeX toolchain (for example, TeX Live or MiKTeX) and run:
+To compile the team paper locally, use a LaTeX toolchain (for example, TeX Live or MiKTeX) and run:
 
 ```bash
 pdflatex term_paper.tex
