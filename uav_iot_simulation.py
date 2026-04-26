@@ -1,7 +1,7 @@
 """
 =============================================================================
 Improving Distance-Extension Methods for Reliable Wireless Communication
-in IoT Networks with UAV
+in IoT Networks with UAV  (Enhanced Version)
 =============================================================================
 
 This script simulates a UAV-to-IoT ground device communication link and
@@ -16,12 +16,19 @@ evaluates several distance-extension techniques:
   7. Genetic Algorithm-based adaptive power control (novelty)
 
 Additional research-level experiments:
-  • Energy efficiency analysis across all techniques
+  • Energy efficiency analysis with formal EE metric (m/mW)
   • Multi-altitude SNR trade-off study (50 m / 100 m / 200 m)
-  • Rayleigh fading channel model
+  • Rayleigh fading channel model (NLoS scenarios)
+  • Rician fading channel model  (LoS-dominant scenarios)
   • Smoothed BER curves with Gaussian filtering
-  • Throughput vs Distance analysis
+  • Throughput vs Distance analysis with adaptive modulation
   • IEEE-format result summary table
+
+Enhanced Version Additions:
+  - Rician fading (K-factor = 6 dB) for LoS-dominant UAV channels
+  - Formal energy efficiency metric: EE = distance / avg_power (m/mW)
+  - Altitude optimization results table
+  - Expanded summary dashboard (3x3 grid)
 
 Author  : Research Implementation
 Date    : April 2026
@@ -204,6 +211,55 @@ def apply_rayleigh_fading(snr_db: np.ndarray,
     h_squared = rng.exponential(1.0, size=snr_db.shape)
     # Prevent log of zero
     h_squared = np.maximum(h_squared, 1e-10)
+    fading_db = 10.0 * np.log10(h_squared)
+    return snr_db + fading_db
+
+
+def apply_rician_fading(snr_db: np.ndarray,
+                        K_factor: float = 6.0,
+                        seed: int = 101) -> np.ndarray:
+    """
+    Apply Rician fading to the SNR values.
+
+    Rician fading models channels with a dominant Line-of-Sight (LoS)
+    component plus scattered multipath.  The K-factor (in linear scale)
+    is the ratio of the LoS power to the scattered power.
+
+    The channel gain |h|² follows a non-central chi-squared distribution
+    with 2 degrees of freedom:
+
+        |h|² ~ NoncentralChiSquared(2, 2K) / (2(K+1))
+
+    In practice we generate it as:
+        h = sqrt(K/(K+1)) + sqrt(1/(K+1)) * CN(0,1)
+        |h|² = |h_real|² + |h_imag|²
+
+    snr_faded = snr_db + 10·log10(|h|²)
+
+    Parameters
+    ----------
+    snr_db   : array  – SNR values in dB (AWGN baseline)
+    K_factor : float  – Rician K-factor in linear scale (default 6.0 ≈ 7.8 dB)
+    seed     : int    – random seed for reproducibility
+
+    Returns
+    -------
+    snr_faded : array – SNR after Rician fading (dB)
+    """
+    rng = np.random.RandomState(seed)
+    N = snr_db.shape[0]
+
+    # LoS component (deterministic)
+    los_amp = np.sqrt(K_factor / (K_factor + 1.0))
+
+    # Scattered component (random, zero-mean complex Gaussian)
+    scatter_std = np.sqrt(1.0 / (2.0 * (K_factor + 1.0)))
+    h_real = los_amp + rng.normal(0, scatter_std, N)
+    h_imag = rng.normal(0, scatter_std, N)
+
+    h_squared = h_real**2 + h_imag**2
+    h_squared = np.maximum(h_squared, 1e-10)  # prevent log(0)
+
     fading_db = 10.0 * np.log10(h_squared)
     return snr_db + fading_db
 
@@ -550,6 +606,33 @@ def compute_avg_tx_power_dbm(tx_power_dbm_arr: np.ndarray) -> float:
     return float(np.mean(tx_power_dbm_arr))
 
 
+def compute_energy_efficiency(max_distance_m: float,
+                              avg_power_mw: float) -> float:
+    """
+    Compute formal Energy Efficiency (EE) metric.
+
+    EE = Reliable Communication Distance / Average Transmission Power
+
+    Units: metres per milliwatt (m/mW)
+
+    A higher value indicates more distance per unit of power, i.e.,
+    better energy efficiency.  This metric captures the fundamental
+    trade-off optimised by the GA approach.
+
+    Parameters
+    ----------
+    max_distance_m : float – maximum reliable communication distance (m)
+    avg_power_mw   : float – average transmission power (mW)
+
+    Returns
+    -------
+    ee : float – energy efficiency (m/mW)
+    """
+    if avg_power_mw <= 0:
+        return 0.0
+    return max_distance_m / avg_power_mw
+
+
 # ============================================================================
 # 7. RESULT TABLE & METRICS
 # ============================================================================
@@ -674,6 +757,9 @@ def run_simulation():
     else:
         snr_base_faded = snr_base.copy()
 
+    # Apply Rician fading (LoS-dominant channel, K=6 linear ≈ 7.8 dB)
+    snr_base_rician = apply_rician_fading(snr_base, K_factor=6.0, seed=101)
+
     ber_base = compute_ber(snr_base, "QPSK")
 
     # ── (b) POWER CONTROL (threshold-based) ─────────────────────────────
@@ -796,6 +882,53 @@ def run_simulation():
         print(f"  GA Energy saving vs Combined   : {saving_cb:+.1f}%")
     print("-" * 70)
 
+    # ── FORMAL ENERGY EFFICIENCY (m/mW) ────────────────────────────────
+    print("\n" + "-" * 90)
+    print("  Formal Energy Efficiency: EE = Max Distance / Avg Power  (m/mW)")
+    print("-" * 90)
+    print(f"  {'Technique':<25s} {'Distance (m)':>14s} {'Power (mW)':>12s} "
+          f"{'EE (m/mW)':>12s}")
+    print("  " + "-" * 86)
+    for name, (dist, pwr_mw) in energy_data.items():
+        ee = compute_energy_efficiency(dist, pwr_mw)
+        print(f"  {name:<25s} {dist:>10,.0f} m   {pwr_mw:>10.1f}    {ee:>10.2f}")
+    print("  " + "-" * 86)
+    print("-" * 90)
+
+    # ── ALTITUDE RESULTS TABLE ──────────────────────────────────────────
+    print("\n" + "-" * 80)
+    print("  UAV Altitude Optimization — Results Table")
+    print("-" * 80)
+    print(f"  {'Altitude (m)':>14s} {'PL Exponent':>14s} {'Max Distance (m)':>18s} "
+          f"{'vs 100m Alt':>14s}")
+    print("  " + "-" * 76)
+    alt_results = {}
+    for alt in SP.UAV_ALTITUDES:
+        n_alt = SP.UAV_ALT_PL_EXP.get(alt, SP.PATH_LOSS_EXP)
+        d_3d_alt = compute_3d_distance(d_horiz, alt)
+        pl_alt = log_distance_path_loss_db(d_3d_alt, SP.FREQ_HZ,
+                                           n=n_alt, d0=SP.REF_DISTANCE_M,
+                                           shadow_std=SP.SHADOW_STD_DB)
+        rx_alt = received_power_dbm(SP.TX_POWER_DBM, pl_alt,
+                                    SP.OMNI_GAIN_DBI, SP.OMNI_GAIN_DBI)
+        snr_alt = compute_snr_db(rx_alt, noise)
+        ber_alt = compute_ber(snr_alt, "QPSK")
+        valid_alt = np.where(ber_alt <= ber_threshold)[0]
+        d_max_alt = d_horiz[valid_alt[-1]] if len(valid_alt) > 0 else 0
+        alt_results[alt] = (n_alt, d_max_alt)
+    d_ref = alt_results.get(100, (2.5, d_base))[1]
+    for alt, (n_alt, d_max_alt) in alt_results.items():
+        if alt == 100:
+            cmp_str = "  (reference)"
+        elif d_ref > 0:
+            ratio = d_max_alt / d_ref
+            cmp_str = f"  {ratio:.2f}x"
+        else:
+            cmp_str = "  --"
+        print(f"  {alt:>14d} {n_alt:>14.1f} {d_max_alt:>14,.0f} m  {cmp_str:>14s}")
+    print("  " + "-" * 76)
+    print("-" * 80)
+
     # ====================================================================
     # 10. VISUALISATION
     # ====================================================================
@@ -810,6 +943,7 @@ def run_simulation():
         "comb":  "#ff922b",   # orange
         "ga":    "#22b8cf",   # cyan
         "ray":   "#e599f7",   # light purple for Rayleigh
+        "ric":   "#20c997",   # teal for Rician
     }
 
     # Gaussian smoothing sigma for BER curves
@@ -1079,9 +1213,9 @@ def run_simulation():
     print("[OK] Saved: fig7_distance_summary.png")
 
     # ────────────────────────────────────────────────────────────────────
-    # FIGURE 8 – Energy Analysis (NEW – critical for GA novelty)
+    # FIGURE 8 – Energy Analysis with Formal EE Metric
     # ────────────────────────────────────────────────────────────────────
-    fig8, (ax8a, ax8b) = plt.subplots(1, 2, figsize=(14, 5))
+    fig8, (ax8a, ax8b, ax8c) = plt.subplots(1, 3, figsize=(20, 5))
     fig8.suptitle("Energy Efficiency Analysis — GA Novelty Justification",
                   fontsize=14, fontweight="bold", color="#e6edf3")
 
@@ -1103,26 +1237,40 @@ def run_simulation():
                   f"{val:.1f}", ha="center", va="bottom",
                   fontsize=9, fontweight="bold", color="#e6edf3")
 
-    # 8b – Distance vs Power trade-off scatter plot
+    # 8b – Formal Energy Efficiency (m/mW) bar chart
+    ee_values = [compute_energy_efficiency(energy_data[n][0], energy_data[n][1])
+                 for n in tech_names]
+    bars8b = ax8b.bar(short_labels, ee_values, color=bar_colors,
+                      edgecolor="#30363d", width=0.55, zorder=3)
+    ax8b.set_ylabel("Energy Efficiency (m/mW)")
+    ax8b.set_title("EE = Distance / Power", fontsize=12)
+    ax8b.grid(True, alpha=0.2, axis="y")
+
+    for bar, val in zip(bars8b, ee_values):
+        ax8b.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.2,
+                  f"{val:.1f}", ha="center", va="bottom",
+                  fontsize=9, fontweight="bold", color="#e6edf3")
+
+    # 8c – Distance vs Power trade-off scatter plot
     tech_distances = [energy_data[n][0] for n in tech_names]
     for i, name in enumerate(tech_names):
-        ax8b.scatter(tech_distances[i], avg_powers_mw[i],
+        ax8c.scatter(tech_distances[i], avg_powers_mw[i],
                      color=bar_colors[i], s=150, zorder=5, edgecolors="white",
                      linewidths=1.5)
-        ax8b.annotate(short_labels[i].replace("\n", " "),
+        ax8c.annotate(short_labels[i].replace("\n", " "),
                       (tech_distances[i], avg_powers_mw[i]),
                       textcoords="offset points", xytext=(10, 8),
                       fontsize=8, color=bar_colors[i])
 
-    ax8b.set_xlabel("Max Communication Distance (m)")
-    ax8b.set_ylabel("Average Tx Power (mW)")
-    ax8b.set_title("Distance–Power Trade-off", fontsize=12)
-    ax8b.grid(True, alpha=0.3)
+    ax8c.set_xlabel("Max Communication Distance (m)")
+    ax8c.set_ylabel("Average Tx Power (mW)")
+    ax8c.set_title("Distance–Power Trade-off", fontsize=12)
+    ax8c.grid(True, alpha=0.3)
 
     # Highlight GA as ideal (lower power, competitive distance)
     ga_d = energy_data["GA Optimized"][0]
     ga_p_mw = energy_data["GA Optimized"][1]
-    ax8b.annotate("★ GA: Best\nEfficiency",
+    ax8c.annotate("★ GA: Best\nEfficiency",
                   (ga_d, ga_p_mw),
                   textcoords="offset points", xytext=(-60, -40),
                   fontsize=9, color=C["ga"], fontweight="bold",
@@ -1203,35 +1351,43 @@ def run_simulation():
     print("[OK] Saved: fig9_altitude_analysis.png")
 
     # ────────────────────────────────────────────────────────────────────
-    # FIGURE 10 – Rayleigh Fading Impact (NEW)
+    # FIGURE 10 – Fading Channel Analysis (AWGN vs Rayleigh vs Rician)
     # ────────────────────────────────────────────────────────────────────
     if SP.ENABLE_RAYLEIGH:
         fig10, (ax10a, ax10b) = plt.subplots(1, 2, figsize=(14, 5))
-        fig10.suptitle("Rayleigh Fading Channel Analysis",
+        fig10.suptitle("Fading Channel Analysis — AWGN vs Rayleigh vs Rician",
                        fontsize=14, fontweight="bold", color="#e6edf3")
 
         # Smooth versions for cleaner plots
         snr_faded_smooth = gaussian_filter1d(snr_base_faded, sigma=SMOOTH_SIGMA)
+        snr_rician_smooth = gaussian_filter1d(snr_base_rician, sigma=SMOOTH_SIGMA)
 
-        # 10a – SNR: AWGN vs Rayleigh
+        # 10a – SNR: AWGN vs Rayleigh vs Rician
         ax10a.plot(d_horiz, snr_base, color=C["base"], lw=2.0,
                    label="AWGN Channel")
         ax10a.plot(d_horiz, snr_base_faded, color=C["ray"], lw=0.5,
                    alpha=0.3)
         ax10a.plot(d_horiz, snr_faded_smooth, color=C["ray"], lw=2.0,
-                   label="Rayleigh Fading (smoothed)")
+                   label="Rayleigh Fading (NLoS)")
+        ax10a.plot(d_horiz, snr_base_rician, color=C["ric"], lw=0.5,
+                   alpha=0.3)
+        ax10a.plot(d_horiz, snr_rician_smooth, color=C["ric"], lw=2.0,
+                   label="Rician Fading (K=6, LoS)")
         ax10a.axhline(SP.SNR_THRESHOLD_QPSK, color="white", ls=":", lw=1.2,
                       alpha=0.6)
         ax10a.set_xlabel("Horizontal Distance (m)")
         ax10a.set_ylabel("SNR (dB)")
-        ax10a.set_title("SNR: AWGN vs Rayleigh Fading", fontsize=12)
+        ax10a.set_title("SNR: AWGN vs Rayleigh vs Rician", fontsize=12)
         ax10a.legend(fontsize=9)
         ax10a.grid(True, alpha=0.3)
 
-        # 10b – BER: AWGN vs Rayleigh
+        # 10b – BER: AWGN vs Rayleigh vs Rician
         ber_faded = compute_ber(snr_base_faded, "QPSK")
+        ber_rician = compute_ber(snr_base_rician, "QPSK")
         ber_faded_smooth = gaussian_filter1d(
             np.log10(np.maximum(ber_faded, 1e-15)), sigma=SMOOTH_SIGMA)
+        ber_rician_smooth = gaussian_filter1d(
+            np.log10(np.maximum(ber_rician, 1e-15)), sigma=SMOOTH_SIGMA)
 
         ax10b.semilogy(d_horiz, ber_base, color=C["base"], lw=0.5, alpha=0.3)
         ax10b.semilogy(d_horiz, 10**gaussian_filter1d(
@@ -1240,14 +1396,29 @@ def run_simulation():
         ax10b.semilogy(d_horiz, ber_faded, color=C["ray"], lw=0.5, alpha=0.2)
         ax10b.semilogy(d_horiz, 10**ber_faded_smooth,
                        color=C["ray"], lw=2.0, label="Rayleigh Fading")
+        ax10b.semilogy(d_horiz, ber_rician, color=C["ric"], lw=0.5, alpha=0.2)
+        ax10b.semilogy(d_horiz, 10**ber_rician_smooth,
+                       color=C["ric"], lw=2.0, label="Rician Fading (K=6)")
         ax10b.axhline(ber_threshold, color="white", ls=":", lw=1.2, alpha=0.6,
                       label=f"BER threshold ({ber_threshold})")
         ax10b.set_xlabel("Horizontal Distance (m)")
         ax10b.set_ylabel("Bit Error Rate")
-        ax10b.set_title("BER: AWGN vs Rayleigh Fading", fontsize=12)
+        ax10b.set_title("BER: AWGN vs Rayleigh vs Rician", fontsize=12)
         ax10b.set_ylim(1e-10, 1)
         ax10b.legend(fontsize=9)
         ax10b.grid(True, alpha=0.3)
+
+        # Print fading comparison
+        valid_ray = np.where(ber_faded <= ber_threshold)[0]
+        valid_ric = np.where(ber_rician <= ber_threshold)[0]
+        d_ray = d_horiz[valid_ray[-1]] if len(valid_ray) > 0 else 0
+        d_ric = d_horiz[valid_ric[-1]] if len(valid_ric) > 0 else 0
+        print(f"\n  Fading Channel Comparison (BER <= {ber_threshold}):")
+        print(f"    AWGN (baseline)  : {d_base:,.0f} m")
+        print(f"    Rayleigh (NLoS)  : {d_ray:,.0f} m  "
+              f"({((d_ray - d_base) / d_base * 100) if d_base > 0 else 0:+.1f}%)")
+        print(f"    Rician (K=6 LoS) : {d_ric:,.0f} m  "
+              f"({((d_ric - d_base) / d_base * 100) if d_base > 0 else 0:+.1f}%)")
 
         fig10.tight_layout(rect=[0, 0, 1, 0.93])
         fig10.savefig("fig10_rayleigh_fading.png", dpi=250, bbox_inches="tight")
@@ -1310,12 +1481,12 @@ def run_simulation():
     print("[OK] Saved: fig11_throughput_analysis.png")
 
     # ────────────────────────────────────────────────────────────────────
-    # FIGURE 12 – Comprehensive Summary Dashboard
+    # FIGURE 12 – Comprehensive Summary Dashboard (Enhanced 3×3 Grid)
     # ────────────────────────────────────────────────────────────────────
-    fig12 = plt.figure(figsize=(16, 10))
-    fig12.suptitle("UAV-IoT Communication — Research Summary Dashboard",
+    fig12 = plt.figure(figsize=(18, 14))
+    fig12.suptitle("UAV-IoT Communication — Enhanced Research Summary Dashboard",
                    fontsize=16, fontweight="bold", color="#e6edf3", y=0.98)
-    gs = GridSpec(2, 3, figure=fig12, hspace=0.35, wspace=0.3)
+    gs = GridSpec(3, 3, figure=fig12, hspace=0.40, wspace=0.35)
 
     # 12a – SNR comparison (compact)
     ax12a = fig12.add_subplot(gs[0, 0])
@@ -1370,7 +1541,7 @@ def run_simulation():
     ax12e.set_title("GA Convergence", fontsize=10)
     ax12e.grid(True, alpha=0.3)
 
-    # 12f – Altitude SNR curves (compact, with altitude-dependent PL exponent)
+    # 12f – Altitude SNR curves (compact)
     ax12f = fig12.add_subplot(gs[1, 2])
     for idx, alt in enumerate(SP.UAV_ALTITUDES):
         n_alt = SP.UAV_ALT_PL_EXP.get(alt, SP.PATH_LOSS_EXP)
@@ -1392,6 +1563,41 @@ def run_simulation():
     ax12f.legend(fontsize=7, title="Alt.", title_fontsize=7)
     ax12f.grid(True, alpha=0.3)
 
+    # 12g – Fading channel comparison (compact — NEW)
+    ax12g = fig12.add_subplot(gs[2, 0])
+    snr_ray_sm = gaussian_filter1d(snr_base_faded, sigma=SMOOTH_SIGMA)
+    snr_ric_sm = gaussian_filter1d(snr_base_rician, sigma=SMOOTH_SIGMA)
+    ax12g.plot(d_horiz, snr_base, color=C["base"], lw=1.5, label="AWGN")
+    ax12g.plot(d_horiz, snr_ray_sm, color=C["ray"], lw=1.5, label="Rayleigh")
+    ax12g.plot(d_horiz, snr_ric_sm, color=C["ric"], lw=1.5, label="Rician")
+    ax12g.axhline(SP.SNR_THRESHOLD_QPSK, color="white", ls=":", lw=0.8, alpha=0.5)
+    ax12g.set_xlabel("Distance (m)", fontsize=9)
+    ax12g.set_ylabel("SNR (dB)", fontsize=9)
+    ax12g.set_title("Fading Channels", fontsize=10)
+    ax12g.legend(fontsize=7)
+    ax12g.grid(True, alpha=0.3)
+
+    # 12h – Energy Efficiency (m/mW) bar chart (compact — NEW)
+    ax12h = fig12.add_subplot(gs[2, 1])
+    bars12h = ax12h.bar(short_lbl, ee_values, color=bar_colors,
+                        edgecolor="#30363d", width=0.55, zorder=3)
+    ax12h.set_ylabel("EE (m/mW)", fontsize=9)
+    ax12h.set_title("Energy Efficiency", fontsize=10)
+    ax12h.grid(True, alpha=0.2, axis="y")
+
+    # 12i – Throughput comparison (compact — NEW)
+    ax12i = fig12.add_subplot(gs[2, 2])
+    ax12i.plot(d_horiz, effective_throughput, color=C["am"], lw=1.5,
+               label="Adaptive")
+    ax12i.plot(d_horiz, fixed_throughput, color=C["base"], lw=1.5,
+               ls="--", label="Fixed QPSK")
+    ax12i.set_xlabel("Distance (m)", fontsize=9)
+    ax12i.set_ylabel("bits/symbol", fontsize=9)
+    ax12i.set_title("Throughput Analysis", fontsize=10)
+    ax12i.set_ylim(0, 5)
+    ax12i.legend(fontsize=7)
+    ax12i.grid(True, alpha=0.3)
+
     fig12.savefig("fig12_summary_dashboard.png", dpi=250, bbox_inches="tight")
     print("[OK] Saved: fig12_summary_dashboard.png")
 
@@ -1400,7 +1606,7 @@ def run_simulation():
 
     # ── Final summary ───────────────────────────────────────────────────
     print("\n" + "=" * 70)
-    print("  SIMULATION COMPLETE -- All Figures Saved")
+    print("  SIMULATION COMPLETE (Enhanced Version) -- All Figures Saved")
     print("=" * 70)
     print(f"  Total figures generated: "
           f"{'12' if SP.ENABLE_RAYLEIGH else '11'}")
@@ -1416,6 +1622,15 @@ def run_simulation():
     if pc_avg_pwr_mw > 0:
         pct = ((pc_avg_pwr_mw - ga_avg_pwr_mw) / pc_avg_pwr_mw) * 100
         print(f"    * GA energy saving vs PC       : {pct:+.1f}%")
+    ga_ee = compute_energy_efficiency(d_ga, ga_avg_pwr_mw)
+    base_ee = compute_energy_efficiency(d_base, base_pwr_mw)
+    print(f"    * GA Energy Efficiency (EE)    : {ga_ee:.2f} m/mW")
+    print(f"    * Baseline Energy Efficiency   : {base_ee:.2f} m/mW")
+    print("\n  Enhanced Version Additions:")
+    print("    + Rician fading channel (K=6, LoS-dominant)")
+    print("    + Formal energy efficiency metric (m/mW)")
+    print("    + Altitude optimization results table")
+    print("    + Expanded 3×3 summary dashboard")
     print("\n  >> GA achieves energy-efficient coverage with competitive range.")
     print("  >> Suitable for IEEE paper submission and academic evaluation.")
     print("=" * 70)
